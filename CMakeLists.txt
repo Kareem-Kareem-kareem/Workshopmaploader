@@ -1,62 +1,50 @@
-cmake_minimum_required(VERSION 3.16)
-project(WorkshopMapLoader VERSION 1.1.0 LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.20)
+project(WorkshopMapLoader)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# ── Suppress MSVC getenv deprecation warning ─────────────────────────────────
-add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
-
-# ── Fetch BakkesModSDK ────────────────────────────────────────────────────────
+# 1. Automatically fetch the BakkesMod SDK via CMake during the GitHub runner session
 include(FetchContent)
-
 FetchContent_Declare(
-    BakkesModSDK
+    bakkesmodsdk
     GIT_REPOSITORY https://github.com/bakkesmodorg/BakkesModSDK.git
-    GIT_TAG        master
-    GIT_SHALLOW    TRUE
+    GIT_TAG master
 )
-FetchContent_MakeAvailable(BakkesModSDK)
+FetchContent_MakeAvailable(bakkesmodsdk)
 
-# ── Extract imgui_bm.zip that ships inside the SDK ───────────────────────────
-set(IMGUI_ZIP "${bakkesmodsdk_SOURCE_DIR}/imgui_bm.zip")
-set(IMGUI_DIR "${CMAKE_BINARY_DIR}/imgui_bm")
+# 2. Extract the bundled ImGui archive provided directly inside the official SDK
+set(IMGUI_ZIP_PATH "${bakkesmodsdk_SOURCE_DIR}/imgui_bm.zip")
+set(IMGUI_EXTRACT_DIR "${CMAKE_CURRENT_BINARY_DIR}/imgui_bm")
 
-if(NOT EXISTS "${IMGUI_DIR}/imgui/imgui.h")
-    message(STATUS "Extracting imgui_bm.zip...")
-    file(ARCHIVE_EXTRACT INPUT "${IMGUI_ZIP}" DESTINATION "${IMGUI_DIR}")
+if(EXISTS "${IMGUI_ZIP_PATH}" AND NOT EXISTS "${IMGUI_EXTRACT_DIR}")
+    file(ARCHIVE_EXTRACT INPUT "${IMGUI_ZIP_PATH}" DESTINATION "${IMGUI_EXTRACT_DIR}")
 endif()
 
-# ── Sources ───────────────────────────────────────────────────────────────────
-add_library(WorkshopMapLoader SHARED
-    WorkshopMapLoader.cpp
-    ${IMGUI_DIR}/imgui/imgui.cpp
-    ${IMGUI_DIR}/imgui/imgui_draw.cpp
-    ${IMGUI_DIR}/imgui/imgui_widgets.cpp
-)
-
-target_include_directories(WorkshopMapLoader PRIVATE
+# 3. Explicitly pass the downloaded target SDK directory blocks to the include path
+include_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${bakkesmodsdk_SOURCE_DIR}/include
-    ${IMGUI_DIR}           # gives us "imgui/imgui.h"
-    ${IMGUI_DIR}/imgui     # gives us "imgui.h" directly
+    ${IMGUI_EXTRACT_DIR}
 )
 
-target_link_libraries(WorkshopMapLoader PRIVATE
-    ${bakkesmodsdk_SOURCE_DIR}/lib/pluginsdk.lib
+# 4. Map out the transient ImGui source paths generated inside the temporary build directory
+set(IMGUI_SOURCES
+    "${IMGUI_EXTRACT_DIR}/imgui/imgui.cpp"
+    "${IMGUI_EXTRACT_DIR}/imgui/imgui_draw.cpp"
+    "${IMGUI_EXTRACT_DIR}/imgui/imgui_widgets.cpp"
 )
 
-set_target_properties(WorkshopMapLoader PROPERTIES
-    OUTPUT_NAME "WorkshopMapLoader"
-    SUFFIX      ".dll"
+# 5. Build the library from your flat root workspace files + downloaded ImGui dependencies
+add_library(${PROJECT_NAME} SHARED
+    WorkshopMapLoader.cpp
+    WorkshopMapLoader.h
+    ${IMGUI_SOURCES}
 )
+
+# 6. Link against the precompiled core SDK library binary packaged with the repo fetch
+target_link_libraries(${PROJECT_NAME} PRIVATE "${bakkesmodsdk_SOURCE_DIR}/lib/pluginsdk.lib")
 
 if(MSVC)
-    target_compile_options(WorkshopMapLoader PRIVATE /W3 /MP /EHsc)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
 endif()
-
-# ── Install ───────────────────────────────────────────────────────────────────
-set(BAKKESMOD_PLUGINS_DIR "$ENV{APPDATA}/bakkesmod/bakkesmod/plugins"
-    CACHE PATH "BakkesMod plugins directory")
-
-install(TARGETS WorkshopMapLoader RUNTIME DESTINATION "${BAKKESMOD_PLUGINS_DIR}")
-install(FILES WorkshopMapLoader.set DESTINATION "${BAKKESMOD_PLUGINS_DIR}")
