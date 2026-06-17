@@ -1,310 +1,202 @@
 #include "WorkshopMapLoader.h"
+#include "imgui/imgui.h"
+#include <fstream>
 #include <algorithm>
-#include <cctype>
 
-BAKKESMOD_PLUGIN(WorkshopMapLoader, "Workshop Map Loader", "1.2.0", PLUGINTYPE_FREEPLAY)
+BAKKESMOD_PLUGIN(WorkshopMapLoader, "Workshop Map Loader", "2.0", PLUGINTYPE_FREEPLAY)
 
 #define BMLOG(msg) cvarManager->log(msg)
 
-static std::string toLower(std::string s) {
-    std::transform(s.begin(), s.end(), s.begin(),
-                   [](unsigned char c){ return (char)std::tolower(c); });
-    return s;
-}
+void WorkshopMapLoader::onLoad() {
+    // Register the directory path variable to persist in config.cfg
+    cvarManager->registerCvar("wml_directory", "C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\252950", "Default Workshop Maps Directory", true, false, 0, false, 0, true);
+    cvarManager->registerCvar("wml_password", "", "LAN Server Password", true, false, 0, false, 0, true);
 
-template<size_t N>
-static void safeCopy(char (&dst)[N], const std::string& src) {
-    strncpy_s(dst, src.c_str(), N - 1);
-    dst[N - 1] = '\0';
-}
+    // Load initial values from persistent variables
+    std::string savedDir = cvarManager->getCvar("wml_directory").getStringValue();
+    strncpy_s(mapDirBuf_, savedDir.c_str(), sizeof(mapDirBuf_) - 1);
 
-void WorkshopMapLoader::onLoad()
-{
-    enablePlugin_ = std::make_shared<bool>(true);
-    workshopPath_ = std::make_shared<std::string>("");
-    autoScan_     = std::make_shared<bool>(true);
+    std::string savedPwd = cvarManager->getCvar("wml_password").getStringValue();
+    strncpy_s(lanPasswordBuf_, savedPwd.c_str(), sizeof(lanPasswordBuf_) - 1);
 
-    cvarManager->registerCvar("wml_enabled", "1",
-        "Enable Workshop Map Loader", true, true, 0, true, 1).bindTo(enablePlugin_);
-    cvarManager->registerCvar("wml_workshop_path", "",
-        "Root folder to scan for .udk maps", true, false, 0, false, 0, true).bindTo(workshopPath_);
-    cvarManager->registerCvar("wml_auto_scan", "1",
-        "Scan for maps on plugin load", true, true, 0, true, 1).bindTo(autoScan_);
+    // Initial scan on startup
+    ScanForMaps();
 
-    cvarManager->registerNotifier("wml_open", [this](std::vector<std::string>) {
-        gameWrapper->Execute([this](GameWrapper*) {
-            cvarManager->executeCommand("togglemenu " + GetMenuName());
-        });
-    }, "Open Workshop Map Loader window", PERMISSION_ALL);
-
-    cvarManager->registerNotifier("wml_close", [this](std::vector<std::string>) {
-        if (isWindowOpen_) gameWrapper->Execute([this](GameWrapper*) {
-            cvarManager->executeCommand("togglemenu " + GetMenuName());
-        });
-    }, "Close Workshop Map Loader window", PERMISSION_ALL);
-
-    cvarManager->registerNotifier("wml_scan", [this](std::vector<std::string>) {
-        ScanWorkshopMaps();
-    }, "Rescan workshop folders", PERMISSION_ALL);
-
-    cvarManager->registerNotifier("wml_list", [this](std::vector<std::string>) {
-        if (maps_.empty()) { BMLOG("No maps found. Run wml_scan first."); return; }
-        for (int i = 0; i < (int)maps_.size(); ++i)
-            BMLOG("[" + std::to_string(i) + "] " + maps_[i].displayName);
-    }, "List all workshop maps", PERMISSION_ALL);
-
-    cvarManager->registerNotifier("wml_load", [this](std::vector<std::string> args) {
-        if (args.size() < 2) { BMLOG("Usage: wml_load <index> or wml_load <path>"); return; }
-        try {
-            int idx = std::stoi(args[1]);
-            if (idx < 0 || idx >= (int)maps_.size()) { BMLOG("Index out of range."); return; }
-            LoadMap(maps_[idx]);
-        } catch (...) { LoadMapByPath(args[1]); }
-    }, "Load workshop map by index or path", PERMISSION_ALL);
-
-    cvarManager->registerNotifier("wml_host", [this](std::vector<std::string> args) {
-        if (args.size() < 2) { BMLOG("Usage: wml_host <index> or wml_host <path>"); return; }
-        try {
-            int idx = std::stoi(args[1]);
-            if (idx < 0 || idx >= (int)maps_.size()) { BMLOG("Index out of range."); return; }
-            HostLAN(maps_[idx].filePath.string());
-        } catch (...) { HostLAN(args[1]); }
-    }, "Host a LAN game on a workshop map", PERMISSION_ALL);
-
-    cvarManager->registerNotifier("wml_return", [this](std::vector<std::string>) {
-        ReturnToMainMenu();
-    }, "Return to main menu", PERMISSION_ALL);
-
-    if (*autoScan_) ScanWorkshopMaps();
-
-    BMLOG("Workshop Map Loader loaded. " + std::to_string(maps_.size()) + " map(s) found.");
-    BMLOG("Open: wml_open | Load: wml_load <n> | Host LAN: wml_host <n>");
-}
-
-void WorkshopMapLoader::onUnload() { BMLOG("Workshop Map Loader unloaded."); }
-
-std::vector<fs::path> WorkshopMapLoader::FindWorkshopRoots()
-{
-    std::vector<fs::path> candidates;
-
-    if (!workshopPath_->empty())
-        candidates.push_back(*workshopPath_);
-
-    candidates.push_back(gameWrapper->GetDataFolder() / "maps");
-
-    for (const char* drive : {"C", "D", "E", "F"}) {
-        candidates.push_back(std::string(drive) + ":/Program Files (x86)/Steam/steamapps/workshop/content/252950");
-        candidates.push_back(std::string(drive) + ":/SteamLibrary/steamapps/workshop/content/252950");
-    }
-    candidates.push_back("C:/Program Files/Epic Games/rocketleague/TAGame/CookedPCConsole");
-    candidates.push_back("C:/Users/Public/Documents/rocketleague_workshop");
-
-    std::vector<fs::path> result;
-    for (auto& p : candidates) {
-        std::error_code ec;
-        if (!fs::is_directory(p, ec)) continue;
-        bool dup = false;
-        for (auto& r : result) {
-            std::error_code ec2;
-            if (fs::equivalent(r, p, ec2) && !ec2) { dup = true; break; }
+    // Console commands for binds
+    cvarManager->registerNotifier("wml_scan", [this](std::vector<std::string> args) { ScanForMaps(); }, "Scan for maps", PERMISSION_ALL);
+    cvarManager->registerNotifier("wml_enter", [this](std::vector<std::string> args) {
+        if (selectedMapIdx_ >= 0 && selectedMapIdx_ < (int)maps_.size()) {
+            EnterMap(maps_[selectedMapIdx_].path);
         }
-        if (!dup) result.push_back(p);
-    }
-    return result;
+    }, "Enter selected map", PERMISSION_ALL);
 }
 
-void WorkshopMapLoader::ScanWorkshopMaps()
-{
-    maps_.clear();
-    statusMsg_ = "Scanning...";
-
-    auto roots = FindWorkshopRoots();
-    if (roots.empty()) {
-        statusMsg_ = "No workshop folders found. Set a path manually.";
-        BMLOG(statusMsg_); return;
-    }
-
-    for (auto& root : roots) {
-        try {
-            for (auto& entry : fs::recursive_directory_iterator(
-                     root, fs::directory_options::skip_permission_denied)) {
-                auto ext = toLower(entry.path().extension().string());
-                if (ext != ".udk" && ext != ".upk") continue;
-                WorkshopMap wm;
-                wm.filePath    = entry.path();
-                wm.name        = entry.path().stem().string();
-                wm.displayName = entry.path().parent_path().filename().string() + " / " + wm.name;
-                maps_.push_back(std::move(wm));
-            }
-        } catch (const std::exception& e) {
-            BMLOG(std::string("Scan warning: ") + e.what());
-        }
-    }
-
-    statusMsg_ = "Found " + std::to_string(maps_.size()) + " map(s).";
-    BMLOG(statusMsg_);
+void WorkshopMapLoader::onUnload() {
 }
 
-void WorkshopMapLoader::LoadMap(const WorkshopMap& map) { LoadMapByPath(map.filePath.string()); }
-
-void WorkshopMapLoader::LoadMapByPath(const std::string& path)
-{
-    if (!*enablePlugin_) { BMLOG("Plugin is disabled."); return; }
-    std::error_code ec;
-    if (!fs::exists(path, ec)) { statusMsg_ = "File not found: " + path; BMLOG(statusMsg_); return; }
-
-    statusMsg_ = "Loading: " + fs::path(path).filename().string();
-    BMLOG(statusMsg_);
-
-    // PlayFreeplayMap takes just the map stem name and handles workshop maps correctly
-    std::string mapName = fs::path(path).stem().string();
-    gameWrapper->Execute([this, mapName](GameWrapper*) {
-        auto gfx = gameWrapper->GetGfxTrainingData();
-        if (gfx) {
-            gfx.PlayFreeplayMap(mapName);
-        }
-    });
-
-    statusMsg_ = "Loaded: " + fs::path(path).filename().string();
-}
-
-void WorkshopMapLoader::HostLAN(const std::string& path)
-{
-    if (!*enablePlugin_) { BMLOG("Plugin is disabled."); return; }
-    std::error_code ec;
-    if (!fs::exists(path, ec)) { statusMsg_ = "File not found: " + path; BMLOG(statusMsg_); return; }
-
-    std::string port(lanPortBuf_);
-    if (port.empty()) port = "7777";
-
-    statusMsg_ = "Hosting LAN: " + fs::path(path).filename().string();
-    BMLOG(statusMsg_);
-    BMLOG("Others join via: connect <your-local-ip>:" + port);
-
-    std::string mapName = fs::path(path).stem().string();
-    gameWrapper->Execute([this, mapName, port](GameWrapper*) {
-        gameWrapper->ExecuteUnrealCommand("open " + mapName + "?listen?port=" + port);
-    });
-}
-
-void WorkshopMapLoader::ReturnToMainMenu()
-{
-    gameWrapper->Execute([this](GameWrapper*) {
-        gameWrapper->ExecuteUnrealCommand("disconnect");
-    });
-    statusMsg_ = "Returned to main menu.";
-    BMLOG(statusMsg_);
-}
-
-void WorkshopMapLoader::SetImGuiContext(uintptr_t ctx)
-{
+void WorkshopMapLoader::SetImGuiContext(uintptr_t ctx) {
     ImGui::SetCurrentContext(reinterpret_cast<ImGuiContext*>(ctx));
 }
 
-std::string WorkshopMapLoader::GetMenuName()  { return "workshopmaploader"; }
-std::string WorkshopMapLoader::GetMenuTitle() { return "Workshop Map Loader"; }
+std::string WorkshopMapLoader::GetPluginName() {
+    return "Workshop Map Loader";
+}
 
-void WorkshopMapLoader::Render()
-{
-    if (!isWindowOpen_) return;
+void WorkshopMapLoader::ScanForMaps() {
+    maps_.clear();
+    selectedMapIdx_ = -1;
+    std::string targetDir(mapDirBuf_);
 
-    ImGui::SetNextWindowSize(ImVec2(660, 580), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowPos(ImVec2(100, 80),   ImGuiCond_FirstUseEver);
-
-    if (!ImGui::Begin("Workshop Map Loader", &isWindowOpen_, ImGuiWindowFlags_NoCollapse)) {
-        ImGui::End(); return;
+    if (targetDir.empty() || !std::filesystem::exists(targetDir)) {
+        statusMsg_ = "Error: Directory does not exist.";
+        return;
     }
 
-    ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.f),
-        "~ console: wml_open  wml_list  wml_load <n>  wml_host <n>  wml_return");
-    ImGui::Separator();
-    ImGui::Spacing();
+    try {
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(targetDir)) {
+            if (entry.is_regular_file()) {
+                std::string ext = entry.path().extension().string();
+                // Standard UDK extension forms
+                if (ext == ".udk" || ext == ".upk") {
+                    WorkshopMap m;
+                    m.name = entry.path().stub().string();
+                    m.path = entry.path().string();
+                    maps_.push_back(m);
+                }
+            }
+        }
+        statusMsg_ = "Scan successful. Found " + std::to_string(maps_.size()) + " maps.";
+        // Persist the directory configuration path
+        cvarManager->getCvar("wml_directory").setValue(targetDir);
+    }
+    catch (const std::exception& e) {
+        statusMsg_ = "Scan failed: " + std::string(e.what());
+    }
+}
 
-    ImGui::Text("Maps folder (blank = auto-detect):");
-    if (pathBuf_[0] == '\0' && !workshopPath_->empty()) safeCopy(pathBuf_, *workshopPath_);
-    ImGui::SetNextItemWidth(-80.0f);
-    bool pathEnter = ImGui::InputText("##wspath", pathBuf_, sizeof(pathBuf_),
-                                      ImGuiInputTextFlags_EnterReturnsTrue);
-    ImGui::SameLine();
-    bool scanBtn = ImGui::Button("Scan", ImVec2(70, 0));
-    if (pathEnter || scanBtn) {
-        *workshopPath_ = pathBuf_;
-        cvarManager->getCvar("wml_workshop_path").setValue(*workshopPath_);
-        ScanWorkshopMaps();
+void WorkshopMapLoader::EnterMap(const std::string& mapPath) {
+    if (mapPath.empty()) return;
+    
+    statusMsg_ = "Loading solo map...";
+    BMLOG("WML: Loading map via training data wrapper: " + mapPath);
+    
+    // Core approach for local custom map instances
+    gameWrapper->GetGfxTrainingData().PlayFreeplayMap(mapPath);
+}
+
+void WorkshopMapLoader::CreateLanMatch() {
+    if (selectedMapIdx_ < 0 || selectedMapIdx_ >= (int)maps_.size()) {
+        statusMsg_ = "Error: Select a map first.";
+        return;
     }
 
-    ImGui::Spacing();
-    ImGui::Text("Load .udk file directly:");
-    ImGui::SetNextItemWidth(-130.0f);
-    ImGui::InputText("##custom", customPathBuf_, sizeof(customPathBuf_));
+    std::string mapPath = maps_[selectedMapIdx_].path;
+    std::string pwd(lanPasswordBuf_);
+    
+    // Update stored password
+    cvarManager->getCvar("wml_password").setValue(pwd);
+
+    statusMsg_ = "Hosting LAN match...";
+    BMLOG("WML: Hosting network map instance: " + mapPath);
+
+    // Build the execution parameters
+    std::string cmd = "open \"" + mapPath + "\"?listen";
+    if (!pwd.empty()) {
+        cmd += "?password=" + pwd;
+    }
+
+    gameWrapper->ExecuteUnrealCommand(cmd);
+}
+
+void WorkshopMapLoader::Render() {
+    ImGui::SetNextWindowSize(ImVec2(550, 450), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin(GetPluginName().c_str(), &isWindowOpen_)) {
+        ImGui::End();
+        return;
+    }
+
+    // Paths Configuration Section
+    ImGui::TextTextUnformatted("Map Directory Path:");
+    if (ImGui::InputText("##dir", mapDirBuf_, sizeof(mapDirBuf_))) {
+        // Keeps user update real-time
+    }
     ImGui::SameLine();
-    if (ImGui::Button("Load File", ImVec2(120, 0)) && customPathBuf_[0] != '\0')
-        LoadMapByPath(std::string(customPathBuf_));
+    if (ImGui::Button("Scan / Refresh")) {
+        ScanForMaps();
+    }
 
-    ImGui::Spacing();
     ImGui::Separator();
-    ImGui::Spacing();
 
-    ImGui::Text("Search:"); ImGui::SameLine();
-    ImGui::SetNextItemWidth(-1.0f);
+    // Map List Filtering
+    ImGui::TextTextUnformatted("Search Filter:");
     ImGui::InputText("##search", searchBuf_, sizeof(searchBuf_));
 
-    float listH = ImGui::GetContentRegionAvail().y - 80.0f;
-    ImGui::BeginChild("##maplist", ImVec2(0, listH), true);
+    // Dynamic Scrolling Selection Box
+    if (ImGui::BeginChild("MapListRegion", ImVec2(0, 200), true)) {
+        std::string searchStr(searchBuf_);
+        std::transform(searchStr.begin(), searchStr.end(), searchStr.begin(), ::tolower);
 
-    if (maps_.empty()) {
-        ImGui::TextDisabled("No maps found.");
-        ImGui::TextDisabled("Epic Games: use F2 > Workshop to download maps.");
-        ImGui::TextDisabled("Or paste a .udk path above and click Load File.");
+        for (int i = 0; i < (int)maps_.size(); ++i) {
+            std::string mapNameLower = maps_[i].name;
+            std::transform(mapNameLower.begin(), mapNameLower.end(), mapNameLower.begin(), ::tolower);
+
+            if (!searchStr.empty() && mapNameLower.find(searchStr) == std::string::npos) {
+                continue;
+            }
+
+            const bool isSelected = (selectedMapIdx_ == i);
+            if (ImGui::Selectable(maps_[i].name.c_str(), isSelected)) {
+                selectedMapIdx_ = i;
+            }
+
+            if (isSelected) {
+                ImGui::SetItemDefaultFocus();
+            }
+            
+            // Double-click shortcut action
+            if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
+                selectedMapIdx_ = i;
+                EnterMap(maps_[i].path);
+            }
+        }
+        ImGui::EndChild();
     }
 
-    std::string filter = toLower(std::string(searchBuf_));
-    for (int i = 0; i < (int)maps_.size(); ++i) {
-        const auto& m = maps_[i];
-        if (!filter.empty() && toLower(m.displayName).find(filter) == std::string::npos) continue;
+    ImGui::Separator();
 
-        bool selected = (selectedMapIndex_ == i);
-        char label[640];
-        snprintf(label, sizeof(label), "[%d]  %s", i, m.displayName.c_str());
+    // Action Execution Controls
+    const bool clearToRun = (selectedMapIdx_ >= 0 && selectedMapIdx_ < (int)maps_.size());
 
-        if (ImGui::Selectable(label, selected, ImGuiSelectableFlags_AllowDoubleClick)) {
-            selectedMapIndex_ = i;
-            if (ImGui::IsMouseDoubleClicked(0)) LoadMap(m);
-        }
-        if (ImGui::IsItemHovered()) {
-            ImGui::BeginTooltip();
-            ImGui::Text("%s", m.filePath.string().c_str());
-            ImGui::Text("Double-click to load in freeplay");
-            ImGui::EndTooltip();
-        }
+    // Faded Alpha state emulator for older ImGui versions
+    if (!clearToRun) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.4f);
+
+    if (ImGui::Button("Enter Map", ImVec2(140, 40)) && clearToRun) {
+        EnterMap(maps_[selectedMapIdx_].path);
     }
-    ImGui::EndChild();
+    
+    if (!clearToRun) ImGui::PopStyleVar();
 
-    ImGui::Spacing();
-    bool canLoad = (selectedMapIndex_ >= 0 && selectedMapIndex_ < (int)maps_.size());
+    ImGui::SameLine(0, 20);
 
-    if (!canLoad) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.4f);
-    if (ImGui::Button("Load Solo", ImVec2(120, 0)) && canLoad)
-        LoadMap(maps_[selectedMapIndex_]);
-    if (!canLoad) ImGui::PopStyleVar();
+    // LAN Management Interface
+    ImGui::BeginGroup();
+    ImGui::TextTextUnformatted("LAN Room Password:");
+    ImGui::SetNextItemWidth(150);
+    ImGui::InputText("##lan_pwd", lanPasswordBuf_, sizeof(lanPasswordBuf_));
+    
+    if (!clearToRun) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.4f);
+    if (ImGui::Button("Create LAN Match") && clearToRun) {
+        CreateLanMatch();
+    }
+    if (!clearToRun) ImGui::PopStyleVar();
+    ImGui::EndGroup();
 
+    ImGui::Separator();
+    
+    // Live Footer Info Feedback Tracker
+    ImGui::TextTextUnformatted("Status:");
     ImGui::SameLine();
-
-    if (!canLoad) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.4f);
-    if (ImGui::Button("Host LAN", ImVec2(120, 0)) && canLoad)
-        HostLAN(maps_[selectedMapIndex_].filePath.string());
-    if (!canLoad) ImGui::PopStyleVar();
-
-    ImGui::SameLine();
-    ImGui::Text("Port:"); ImGui::SameLine();
-    ImGui::SetNextItemWidth(60.0f);
-    ImGui::InputText("##port", lanPortBuf_, sizeof(lanPortBuf_));
-
-    ImGui::SameLine();
-    if (ImGui::Button("Return", ImVec2(80, 0))) ReturnToMainMenu();
-
-    ImGui::SameLine();
-    ImGui::TextDisabled("  %s", statusMsg_.c_str());
+    ImGui::TextColored(ImVec4(0.2f, 0.8f, 1.0f, 1.0f), statusMsg_.c_str());
 
     ImGui::End();
 }
