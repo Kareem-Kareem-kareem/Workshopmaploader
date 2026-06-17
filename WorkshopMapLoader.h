@@ -10,9 +10,12 @@ public:
     void onLoad() override;
     void onUnload() override;
 
-    void OnPhysicsTick(std::string eventName);
-    void OnBallHit(std::string eventName);
+    void RenderCanvas(CanvasWrapper canvas);
 
 private:
-    bool isAutoAimActive_ = false;
+    int goals_ = 0;
+    int saves_ = 0;
+    int shots_ = 0;
+    int assists_ = 0;
+    float boostAmount_ = 0.0f;
 };
