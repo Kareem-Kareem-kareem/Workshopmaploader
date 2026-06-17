@@ -1,9 +1,7 @@
 #pragma once
 
-// Force include the specific absolute SDK interface components to resolve C2504
 #include "bakkesmod/plugin/bakkesmodplugin.h"
 #include "bakkesmod/plugin/pluginwindow.h"
-#include "bakkesmod/plugin/PluginWindow.h"
 
 #include <string>
 #include <vector>
@@ -14,23 +12,18 @@ struct WorkshopMap {
     std::string path;
 };
 
-// Explicitly inherited using fully qualified namespace contexts if needed
 class WorkshopMapLoader : public BakkesModPlugin, public PluginWindow {
 public:
-    // Core Lifecycle Hooks
-    void onLoad() override;
-    void onUnload() override;
+    virtual void onLoad() override;
+    virtual void onUnload() override;
 
-    // Interface Subsystems
-    void Render() override;
-    std::string GetPluginName() override;
-    void SetImGuiContext(uintptr_t ctx) override;
+    virtual void Render() override;
+    virtual std::string GetPluginName() override;
+    virtual void SetImGuiContext(uintptr_t ctx) override;
 
-    // Window Visibility Overrides
-    void OnOpen() override;
-    void OnClose() override;
+    virtual void OnOpen() override;
+    virtual void OnClose() override;
 
-    // Operational Features
     void ScanForMaps();
     void EnterMap(const std::string& mapPath);
     void CreateLanMatch();
