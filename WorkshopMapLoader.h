@@ -13,16 +13,20 @@ struct WorkshopMap {
 
 class WorkshopMapLoader : public BakkesModPlugin, public PluginWindow {
 public:
+    // Core Lifecycle Hooks
     void onLoad() override;
     void onUnload() override;
 
+    // Interface Rendering Subsystems
     void Render() override;
     std::string GetPluginName() override;
     void SetImGuiContext(uintptr_t ctx) override;
 
+    // Window Visibility Overrides
     void OnOpen() override;
     void OnClose() override;
 
+    // Operational Mapping Logic
     void ScanForMaps();
     void EnterMap(const std::string& mapPath);
     void CreateLanMatch();
