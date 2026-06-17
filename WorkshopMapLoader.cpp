@@ -1,68 +1,39 @@
 #include "WorkshopMapLoader.h"
-#include "bakkesmod/wrappers/GameEvent/ServerWrapper.h"
-#include "bakkesmod/wrappers/GameObject/CarWrapper.h"
-#include "bakkesmod/wrappers/GameObject/PRIWrapper.h"
-#include "bakkesmod/wrappers/canvaswrapper.h"
+#include "bakkesmod/wrappers/GameObject/CVarManagerWrapper.h"
 
 using namespace BakkesMod::Plugin;
 
-BAKKESMOD_PLUGIN(WorkshopMapLoader, "Live Session Stat Tracker", "1.0", PLUGINTYPE_FREEPLAY)
+BAKKESMOD_PLUGIN(WorkshopMapLoader, "Camera Preset Toggle", "1.0", PLUGINTYPE_FREEPLAY)
 
 void WorkshopMapLoader::onLoad() {
-    if (!gameWrapper) return;
+    if (!cvarManager) return;
 
-    gameWrapper->RegisterDrawFunc(std::bind(&WorkshopMapLoader::RenderCanvas, this, std::placeholders::_1));
+    cvarManager->registerNotifier("cam_toggle_view", [this](std::vector<std::string> args) {
+        ToggleCameraSettings();
+    }, "Toggles between normal and wide camera presets", PERMISSION_ALL);
 }
 
 void WorkshopMapLoader::onUnload() {
 }
 
-void WorkshopMapLoader::RenderCanvas(CanvasWrapper canvas) {
-    ServerWrapper server = gameWrapper->GetCurrentGameState();
-    if (!server) return;
+void WorkshopMapLoader::ToggleCameraSettings() {
+    if (!cvarManager) return;
 
-    CarWrapper localCar = gameWrapper->GetLocalCar();
-    if (!localCar) return;
+    auto distanceCvar = cvarManager->getCvar("cl_camera_distance");
+    auto fovCvar = cvarManager->getCvar("cl_camera_fov");
+    auto heightCvar = cvarManager->getCvar("cl_camera_height");
 
-    PRIWrapper pri = localCar.GetPRI();
-    if (!pri) return;
+    if (!distanceCvar || !fovCvar || !heightCvar) return;
 
-    goals_ = pri.GetMatchGoals();
-    saves_ = pri.GetMatchSaves();
-    shots_ = pri.GetMatchShots();
-    assists_ = pri.GetMatchAssists();
-
-    auto boostComponent = localCar.GetBoostComponent();
-    if (boostComponent) {
-        boostAmount_ = boostComponent.GetCurrentBoostAmount() * 100.0f;
-    }
-
-    canvas.SetPosition(LinearColor{ 0, 0, 0, 150 });
-    canvas.SetColor(0, 0, 0, 150);
-    canvas.FillBox(Vector2{ 20, 20 }, Vector2{ 220, 160 });
-
-    canvas.SetColor(255, 255, 255, 255);
-    
-    canvas.SetPosition(Vector2{ 35, 30 });
-    canvas.DrawString("SESSION LIVE STATS", 1.2f, 1.2f);
-
-    canvas.SetPosition(Vector2{ 35, 60 });
-    canvas.DrawString("Goals: " + std::to_string(goals_), 1.0f, 1.0f);
-
-    canvas.SetPosition(Vector2{ 35, 85 });
-    canvas.DrawString("Saves: " + std::to_string(saves_), 1.0f, 1.0f);
-
-    canvas.SetPosition(Vector2{ 35, 110 });
-    canvas.DrawString("Shots: " + std::to_string(shots_), 1.0f, 1.0f);
-
-    canvas.SetPosition(Vector2{ 35, 135 });
-    canvas.DrawString("Assists: " + std::to_string(assists_), 1.0f, 1.0f);
-
-    if (boostAmount_ < 25.0f) {
-        canvas.SetColor(255, 50, 50, 255);
+    if (!isWideViewActive_) {
+        distanceCvar.setValue(400.0f);
+        fovCvar.setValue(110.0f);
+        heightCvar.setValue(150.0f);
+        isWideViewActive_ = true;
     } else {
-        canvas.SetColor(50, 255, 50, 255);
+        distanceCvar.setValue(270.0f);
+        fovCvar.setValue(110.0f);
+        heightCvar.setValue(110.0f);
+        isWideViewActive_ = false;
     }
-    canvas.SetPosition(Vector2{ 35, 160 });
-    canvas.DrawString("Live Boost: " + std::to_string(static_cast<int>(boostAmount_)) + "%", 1.0f, 1.0f);
 }
