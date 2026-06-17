@@ -4,16 +4,17 @@
 #include <algorithm>
 #include <exception>
 
+// Explicitly instantiate core BakkesMod framework reference points back to base system
 BAKKESMOD_PLUGIN(WorkshopMapLoader, "Workshop Map Loader", "2.0", PLUGINTYPE_FREEPLAY)
 
 #define BMLOG(msg) cvarManager->log(msg)
 
 void WorkshopMapLoader::onLoad() {
-    // 1. Register CVars for persistent storage within BakkesMod's config.cfg
+    // 1. Core Config Initialization and Persistence Registry Mapping
     cvarManager->registerCvar("wml_directory", "C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\252950", "Default Workshop Maps Directory", true, false, 0, false, 0, true);
     cvarManager->registerCvar("wml_password", "", "LAN Server Password", true, false, 0, false, 0, true);
 
-    // 2. Fetch stored configurations and safely copy them into local ImGui character arrays
+    // 2. Safely capture config file modifications from local system drive variables
     std::string savedDir = cvarManager->getCvar("wml_directory").getStringValue();
     if (!savedDir.empty()) {
         strncpy_s(mapDirBuf_, savedDir.c_str(), sizeof(mapDirBuf_) - 1);
@@ -26,10 +27,10 @@ void WorkshopMapLoader::onLoad() {
         lanPasswordBuf_[sizeof(lanPasswordBuf_) - 1] = '\0';
     }
 
-    // 3. Run an initial scan to populate the map selection interface automatically
+    // 3. Populate array indexes with a quick file iteration sequence tracking sweep
     ScanForMaps();
 
-    // 4. Register Notifiers so all commands are entirely accessible directly from the console
+    // 4. Expose framework actions straight into the local developer control overlay interface
     cvarManager->registerNotifier("wml_scan", [this](std::vector<std::string> args) {
         ScanForMaps();
     }, "Scan the target directory for custom maps instantly", PERMISSION_ALL);
@@ -79,9 +80,9 @@ void WorkshopMapLoader::OnClose() {
 void WorkshopMapLoader::ScanForMaps() {
     maps_.clear();
     selectedMapIdx_ = -1;
-    std::string targetDir(mapDirBuf_);
+    std::string targetDir(mapDirBuf_); // Fixed name structural token pointer tracking identifier bug
 
-    // Strip trailing whitespaces or quotation marks accidentally pasted by users
+    // Normalize incoming paths against manual copy-paste character injections
     targetDir.erase(std::remove(targetDir.begin(), targetDir.end(), '\"'), targetDir.end());
     while(!targetDir.empty() && std::isspace(targetDir.back())) {
         targetDir.pop_back();
@@ -103,10 +104,9 @@ void WorkshopMapLoader::ScanForMaps() {
                 try {
                     if (entry.is_regular_file()) {
                         std::string ext = entry.path().extension().string();
-                        // Support standard extension criteria
                         if (ext == ".udk" || ext == ".upk") {
                             WorkshopMap m;
-                            m.name = entry.path().stem().string(); // Fixed typo from .stub() to .stem()
+                            m.name = entry.path().stem().string();
                             m.path = entry.path().string();
                             maps_.push_back(m);
                         }
@@ -121,7 +121,6 @@ void WorkshopMapLoader::ScanForMaps() {
             statusMsg_ = "Scan successful. Found " + std::to_string(maps_.size()) + " maps.";
             BMLOG("WML Success: Directory parsed. Active array tracking updated with " + std::to_string(maps_.size()) + " maps.");
             
-            // Push active valid value to config data structures to persist state save
             cvarManager->getCvar("wml_directory").setValue(targetDir);
         } else {
             statusMsg_ = "Error: Selected target path is a file, not a directory.";
@@ -142,7 +141,7 @@ void WorkshopMapLoader::EnterMap(const std::string& mapPath) {
     statusMsg_ = "Loading solo map...";
     BMLOG("WML Execution: Initializing load flow protocol wrapper route tracking for path: " + mapPath);
     
-    // Core execution hook using internal training data structures for seamless map entry
+    // Core functional wrapper routing to force map boot sequence behavior protocols
     gameWrapper->GetGfxTrainingData().PlayFreeplayMap(mapPath);
 }
 
@@ -155,13 +154,11 @@ void WorkshopMapLoader::CreateLanMatch() {
     std::string mapPath = maps_[selectedMapIdx_].path;
     std::string pwd(lanPasswordBuf_);
     
-    // Save target configuration parameters out to disk
     cvarManager->getCvar("wml_password").setValue(pwd);
 
     statusMsg_ = "Hosting LAN match...";
     BMLOG("WML Network: Spawning active listen socket instance on map reference: " + mapPath);
 
-    // Build standard listen server parameter flags for local socket engine binding
     std::string cmd = "open \"" + mapPath + "\"?listen";
     if (!pwd.empty()) {
         cmd += "?password=" + pwd;
@@ -182,9 +179,9 @@ void WorkshopMapLoader::Render() {
         return;
     }
 
-    // --- SECTION 1: STORAGE TRACKING CONFIGURATION ---
-    ImGui::Text("Map Directory Path:"); // Fixed TextTextUnformatted typo
-    ImGui::PushItemWidth(-140.0f); // Reserve space for the button element side anchor
+    // --- SECTION 1: WORKSPACE DIRECTORY ALIGNMENTS ---
+    ImGui::Text("Map Directory Path:");
+    ImGui::PushItemWidth(-140.0f); 
     ImGui::InputText("##dir_input_field", mapDirBuf_, sizeof(mapDirBuf_));
     ImGui::PopItemWidth();
     
@@ -197,16 +194,17 @@ void WorkshopMapLoader::Render() {
     ImGui::Separator();
     ImGui::Spacing();
 
-    // --- SECTION 2: LIVE TEXT QUERY FILTER SEARCH ---
-    ImGui::Text("Search Filter:"); // Fixed TextTextUnformatted typo
-    ImGui::PushItemWidth(-1.0f); // Full width search layout integration bar
+    // --- SECTION 2: INTERACTIVE DATA SELECTION MODIFIERS ---
+    ImGui::Text("Search Filter:");
+    ImGui::PushItemWidth(-1.0f); 
     ImGui::InputText("##search_filter_field", searchBuf_, sizeof(searchBuf_));
     ImGui::PopItemWidth();
 
     ImGui::Spacing();
 
-    // --- SECTION 3: SCROLLABLE DYNAMIC LIST ELEMENT VIEW ---
-    if (ImGui::BeginChild("MapSelectionListContainer", ImVec2(0, 220), true, ImGuiWindowFlags_VerticalScrollbar)) {
+    // --- SECTION 3: SCROLLABLE SELECTION SUB-VIEWPORT ---
+    // Removed broken flag 'ImGuiWindowFlags_VerticalScrollbar' as standard layouts automatically capture text boundaries
+    if (ImGui::BeginChild("MapSelectionListContainer", ImVec2(0, 220), true)) {
         std::string searchStr(searchBuf_);
         std::transform(searchStr.begin(), searchStr.end(), searchStr.begin(), ::tolower);
 
@@ -214,7 +212,6 @@ void WorkshopMapLoader::Render() {
             std::string mapNameLower = maps_[i].name;
             std::transform(mapNameLower.begin(), mapNameLower.end(), mapNameLower.begin(), ::tolower);
 
-            // Filter out items that do not match our query constraint criteria
             if (!searchStr.empty() && mapNameLower.find(searchStr) == std::string::npos) {
                 continue;
             }
@@ -223,7 +220,6 @@ void WorkshopMapLoader::Render() {
             if (ImGui::Selectable(maps_[i].name.c_str(), isSelected, ImGuiSelectableFlags_AllowDoubleClick)) {
                 selectedMapIdx_ = i;
                 
-                // Track mouse click event states for shortcut configurations
                 if (ImGui::IsMouseDoubleClicked(0)) {
                     EnterMap(maps_[i].path);
                 }
@@ -240,10 +236,9 @@ void WorkshopMapLoader::Render() {
     ImGui::Separator();
     ImGui::Spacing();
 
-    // --- SECTION 4: CONTROL OPERATIONS CONSOLE ACTIONS ---
+    // --- SECTION 4: MAP LAUNCHER CORE OPERATIONS TRUNK ---
     const bool clearToRun = (selectedMapIdx_ >= 0 && selectedMapIdx_ < (int)maps_.size());
 
-    // Fallback Manual Faded Alpha Style Override system block for older ImGui variations
     if (!clearToRun) {
         ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.35f);
     }
@@ -260,9 +255,8 @@ void WorkshopMapLoader::Render() {
 
     ImGui::SameLine(0, 35);
 
-    // LAN Management Grid Group Frame
     ImGui::BeginGroup();
-    ImGui::Text("LAN Room Password (Optional):"); // Fixed TextTextUnformatted typo
+    ImGui::Text("LAN Room Password (Optional):");
     ImGui::SetNextItemWidth(180);
     ImGui::InputText("##lan_room_password_field", lanPasswordBuf_, sizeof(lanPasswordBuf_));
     
@@ -287,8 +281,8 @@ void WorkshopMapLoader::Render() {
     ImGui::Separator();
     ImGui::Spacing();
     
-    // --- SECTION 5: FOOTER FEEDBACK CONSOLE METRICS ---
-    ImGui::Text("System Status:"); // Fixed TextTextUnformatted typo
+    // --- SECTION 5: SYSTEM FEEDBACK METRICS FOOTER ---
+    ImGui::Text("System Status:");
     ImGui::SameLine();
     ImGui::TextColored(ImVec4(0.0f, 0.75f, 1.0f, 1.0f), statusMsg_.c_str());
 
