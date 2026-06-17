@@ -2,7 +2,6 @@
 
 #include "bakkesmod/plugin/bakkesmodplugin.h"
 #include <string>
-#include <memory>
 
 using namespace BakkesMod::Plugin;
 
