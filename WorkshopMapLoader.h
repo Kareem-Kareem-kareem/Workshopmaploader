@@ -22,7 +22,7 @@ public:
     virtual std::string GetPluginName() override;
     virtual void SetImGuiContext(uintptr_t ctx) override;
 
-    // Core Logic
+    // Core Features
     void ScanForMaps();
     void EnterMap(const std::string& mapPath);
     void CreateLanMatch();
