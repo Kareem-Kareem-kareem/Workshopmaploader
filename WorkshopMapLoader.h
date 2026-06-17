@@ -1,7 +1,6 @@
 #pragma once
-#pragma comment(lib, "pluginsdk.lib")
 
-// Core BakkesMod SDK Includes must be absolute and visible first
+// Establish structural SDK links explicitly before type compilation begins
 #include "bakkesmod/plugin/bakkesmodplugin.h"
 #include "bakkesmod/plugin/pluginwindow.h"
 
@@ -16,32 +15,32 @@ struct WorkshopMap {
 
 class WorkshopMapLoader : public BakkesModPlugin, public PluginWindow {
 public:
-    // Core BakkesMod Lifecycle Hooks
+    // Core BakkesMod Lifecycle Engine Hooks
     virtual void onLoad() override;
     virtual void onUnload() override;
 
-    // ImGui / Overlay Subsystem Interfaces
+    // ImGui / UI Rendering Subsystem Overrides
     virtual void Render() override;
     virtual std::string GetPluginName() override;
     virtual void SetImGuiContext(uintptr_t ctx) override;
 
-    // Window State Management Hooks
+    // Direct Overlay Canvas State Switches
     virtual void OnOpen() override;
     virtual void OnClose() override;
 
-    // System Features and Event Handlers
+    // Core Plugin Functionality Routine Elements
     void ScanForMaps();
     void EnterMap(const std::string& mapPath);
     void CreateLanMatch();
 
 private:
-    // Plugin State Variables
+    // Memory Arrays and State Enums
     std::vector<WorkshopMap> maps_;
     int selectedMapIdx_ = -1;
     bool isWindowOpen_ = false;
     std::string statusMsg_ = "Ready";
 
-    // Text Input Buffers for UI Controls
+    // Static Text Allocation Windows for Local Input Management
     char searchBuf_[256] = "";
     char mapDirBuf_[512] = "";
     char lanPasswordBuf_[128] = "";
