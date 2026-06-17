@@ -1,92 +1,68 @@
 #include "WorkshopMapLoader.h"
 #include "bakkesmod/wrappers/GameEvent/ServerWrapper.h"
-#include "bakkesmod/wrappers/GameObject/BallWrapper.h"
 #include "bakkesmod/wrappers/GameObject/CarWrapper.h"
-#include <cmath>
+#include "bakkesmod/wrappers/GameObject/PRIWrapper.h"
+#include "bakkesmod/wrappers/canvaswrapper.h"
 
 using namespace BakkesMod::Plugin;
 
-BAKKESMOD_PLUGIN(WorkshopMapLoader, "Ball Auto Aim Mod", "1.0", PLUGINTYPE_FREEPLAY)
+BAKKESMOD_PLUGIN(WorkshopMapLoader, "Live Session Stat Tracker", "1.0", PLUGINTYPE_FREEPLAY)
 
 void WorkshopMapLoader::onLoad() {
     if (!gameWrapper) return;
 
-    gameWrapper->HookEvent("TAGame.Car_TA.EventHitBall", std::bind(&WorkshopMapLoader::OnBallHit, this, std::placeholders::_1));
-    gameWrapper->HookEvent("TAGame.GameEvent_Soccer_TA.OnPhysicsStep", std::bind(&WorkshopMapLoader::OnPhysicsTick, this, std::placeholders::_1));
+    gameWrapper->RegisterDrawFunc(std::bind(&WorkshopMapLoader::RenderCanvas, this, std::placeholders::_1));
 }
 
 void WorkshopMapLoader::onUnload() {
-    if (!gameWrapper) return;
-
-    gameWrapper->UnhookEvent("TAGame.Car_TA.EventHitBall");
-    gameWrapper->UnhookEvent("TAGame.GameEvent_Soccer_TA.OnPhysicsStep");
 }
 
-void WorkshopMapLoader::OnBallHit(std::string eventName) {
+void WorkshopMapLoader::RenderCanvas(CanvasWrapper canvas) {
     ServerWrapper server = gameWrapper->GetCurrentGameState();
     if (!server) return;
 
     CarWrapper localCar = gameWrapper->GetLocalCar();
     if (!localCar) return;
 
-    auto cars = server.GetCars();
-    for (int i = 0; i < cars.Count(); ++i) {
-        CarWrapper car = cars.Get(i);
-        if (!car) continue;
+    PRIWrapper pri = localCar.GetPRI();
+    if (!pri) return;
 
-        if (car.GetBallHitInfo().bHitBall) {
-            if (car.GetInterfaceAddress() == localCar.GetInterfaceAddress()) {
-                isAutoAimActive_ = true;
-            } else {
-                isAutoAimActive_ = false;
-            }
-            break;
-        }
-    }
-}
+    goals_ = pri.GetMatchGoals();
+    saves_ = pri.GetMatchSaves();
+    shots_ = pri.GetMatchShots();
+    assists_ = pri.GetMatchAssists();
 
-void WorkshopMapLoader::OnPhysicsTick(std::string eventName) {
-    if (!isAutoAimActive_) return;
-
-    ServerWrapper server = gameWrapper->GetCurrentGameState();
-    if (!server) return;
-
-    BallWrapper ball = server.GetBall();
-    if (!ball) return;
-
-    CarWrapper localCar = gameWrapper->GetLocalCar();
-    if (!localCar) return;
-
-    unsigned char localTeam = localCar.GetTeamNum2();
-    Vector goalLocation(0, 5120, 0);
-
-    if (localTeam == 0) {
-        goalLocation.Y = 5120;
-    } else {
-        goalLocation.Y = -5120;
+    auto boostComponent = localCar.GetBoostComponent();
+    if (boostComponent) {
+        boostAmount_ = boostComponent.GetCurrentBoostAmount() * 100.0f;
     }
 
-    Vector ballLocation = ball.GetLocation();
-    Vector targetDirection = goalLocation - ballLocation;
+    canvas.SetPosition(LinearColor{ 0, 0, 0, 150 });
+    canvas.SetColor(0, 0, 0, 150);
+    canvas.FillBox(Vector2{ 20, 20 }, Vector2{ 220, 160 });
+
+    canvas.SetColor(255, 255, 255, 255);
     
-    float distance = std::sqrt(targetDirection.X * targetDirection.X + targetDirection.Y * targetDirection.Y + targetDirection.Z * targetDirection.Z);
-    if (distance > 0.1f) {
-        targetDirection.X /= distance;
-        targetDirection.Y /= distance;
-        targetDirection.Z /= distance;
+    canvas.SetPosition(Vector2{ 35, 30 });
+    canvas.DrawString("SESSION LIVE STATS", 1.2f, 1.2f);
+
+    canvas.SetPosition(Vector2{ 35, 60 });
+    canvas.DrawString("Goals: " + std::to_string(goals_), 1.0f, 1.0f);
+
+    canvas.SetPosition(Vector2{ 35, 85 });
+    canvas.DrawString("Saves: " + std::to_string(saves_), 1.0f, 1.0f);
+
+    canvas.SetPosition(Vector2{ 35, 110 });
+    canvas.DrawString("Shots: " + std::to_string(shots_), 1.0f, 1.0f);
+
+    canvas.SetPosition(Vector2{ 35, 135 });
+    canvas.DrawString("Assists: " + std::to_string(assists_), 1.0f, 1.0f);
+
+    if (boostAmount_ < 25.0f) {
+        canvas.SetColor(255, 50, 50, 255);
+    } else {
+        canvas.SetColor(50, 255, 50, 255);
     }
-
-    Vector ballVelocity = ball.GetVelocity();
-    float currentSpeed = std::sqrt(ballVelocity.X * ballVelocity.X + ballVelocity.Y * ballVelocity.Y + ballVelocity.Z * ballVelocity.Z);
-
-    if (currentSpeed < 500.0f) {
-        currentSpeed = 1500.0f;
-    }
-
-    Vector newVelocity;
-    newVelocity.X = targetDirection.X * currentSpeed;
-    newVelocity.Y = targetDirection.Y * currentSpeed;
-    newVelocity.Z = targetDirection.Z * currentSpeed;
-
-    ball.SetVelocity(newVelocity);
+    canvas.SetPosition(Vector2{ 35, 160 });
+    canvas.DrawString("Live Boost: " + std::to_string(static_cast<int>(boostAmount_)) + "%", 1.0f, 1.0f);
 }
