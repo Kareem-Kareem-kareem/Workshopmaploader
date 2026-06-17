@@ -1,8 +1,10 @@
 #pragma once
 #pragma comment(lib, "pluginsdk.lib")
 
+// Core BakkesMod SDK Includes must be absolute and visible first
 #include "bakkesmod/plugin/bakkesmodplugin.h"
 #include "bakkesmod/plugin/pluginwindow.h"
+
 #include <string>
 #include <vector>
 #include <filesystem>
