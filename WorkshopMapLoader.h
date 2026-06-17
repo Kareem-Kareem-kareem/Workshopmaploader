@@ -2,6 +2,7 @@
 
 #include "bakkesmod/plugin/bakkesmodplugin.h"
 #include <string>
+#include <vector>
 
 using namespace BakkesMod::Plugin;
 
@@ -10,12 +11,8 @@ public:
     void onLoad() override;
     void onUnload() override;
 
-    void RenderCanvas(CanvasWrapper canvas);
+    void ToggleCameraSettings();
 
 private:
-    int goals_ = 0;
-    int saves_ = 0;
-    int shots_ = 0;
-    int assists_ = 0;
-    float boostAmount_ = 0.0f;
+    bool isWideViewActive_ = false;
 };
