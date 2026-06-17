@@ -39,7 +39,7 @@ target_include_directories(WorkshopMapLoader PRIVATE
 )
 
 target_link_libraries(WorkshopMapLoader PRIVATE
-    ${bakkesmodsdk_SOURCE_DIR}/lib/BakkesMod.lib
+    ${bakkesmodsdk_SOURCE_DIR}/lib/pluginsdk.lib
 )
 
 set_target_properties(WorkshopMapLoader PROPERTIES
