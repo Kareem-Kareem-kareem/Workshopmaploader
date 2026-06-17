@@ -1,14 +1,19 @@
 #include "WorkshopMapLoader.h"
+
+// Ensure the ImGui and core system definitions load explicitly after the header
 #include "imgui/imgui.h"
 #include <fstream>
 #include <algorithm>
 #include <exception>
 
+// The registration macro connects 'cvarManager' and 'gameWrapper' behind the scenes.
 BAKKESMOD_PLUGIN(WorkshopMapLoader, "Workshop Map Loader", "2.0", PLUGINTYPE_FREEPLAY)
 
 #define BMLOG(msg) if (cvarManager) { cvarManager->log(msg); }
 
 void WorkshopMapLoader::onLoad() {
+    if (!cvarManager) return;
+
     cvarManager->registerCvar("wml_directory", "C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\252950", "Default Workshop Maps Directory", true, false, 0, false, 0, true);
     cvarManager->registerCvar("wml_password", "", "LAN Server Password", true, false, 0, false, 0, true);
 
@@ -34,7 +39,7 @@ void WorkshopMapLoader::onLoad() {
         if (selectedMapIdx_ >= 0 && selectedMapIdx_ < (int)maps_.size()) {
             EnterMap(maps_[selectedMapIdx_].path);
         } else {
-            statusMsg_ = "Error: Cannot execute console load. No map selected.";
+            statusMsg = "Error: Cannot execute console load. No map selected.";
             BMLOG("WML Error: Console command wml_enter failed due to no active map selection.");
         }
     }, "Load the currently selected map instantly", PERMISSION_ALL);
@@ -115,7 +120,9 @@ void WorkshopMapLoader::ScanForMaps() {
             statusMsg_ = "Scan successful. Found " + std::to_string(maps_.size()) + " maps.";
             BMLOG("WML Success: Directory parsed. Active array tracking updated with " + std::to_string(maps_.size()) + " maps.");
             
-            cvarManager->getCvar("wml_directory").setValue(targetDir);
+            if (cvarManager) {
+                cvarManager->getCvar("wml_directory").setValue(targetDir);
+            }
         } else {
             statusMsg_ = "Error: Selected target path is a file, not a directory.";
         }
@@ -149,7 +156,9 @@ void WorkshopMapLoader::CreateLanMatch() {
     std::string mapPath = maps_[selectedMapIdx_].path;
     std::string pwd(lanPasswordBuf_);
     
-    cvarManager->getCvar("wml_password").setValue(pwd);
+    if (cvarManager) {
+        cvarManager->getCvar("wml_password").setValue(pwd);
+    }
 
     statusMsg_ = "Hosting LAN match...";
     BMLOG("WML Network: Spawning active listen socket instance on map reference: " + mapPath);
