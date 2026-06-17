@@ -14,24 +14,33 @@ struct WorkshopMap {
 
 class WorkshopMapLoader : public BakkesModPlugin, public PluginWindow {
 public:
+    // Core BakkesMod Lifecycle Hooks
     virtual void onLoad() override;
     virtual void onUnload() override;
 
-    // PluginWindow Implementation
+    // ImGui / Overlay Subsystem Interfaces
     virtual void Render() override;
     virtual std::string GetPluginName() override;
     virtual void SetImGuiContext(uintptr_t ctx) override;
 
-    // Core Features
+    // Window State Management Hooks
+    virtual void OnOpen() override;
+    virtual void OnClose() override;
+
+    // System Features and Event Handlers
     void ScanForMaps();
     void EnterMap(const std::string& mapPath);
     void CreateLanMatch();
 
 private:
+    // Plugin State Variables
     std::vector<WorkshopMap> maps_;
     int selectedMapIdx_ = -1;
+    bool isWindowOpen_ = false;
+    std::string statusMsg_ = "Ready";
+
+    // Text Input Buffers for UI Controls
     char searchBuf_[256] = "";
     char mapDirBuf_[512] = "";
     char lanPasswordBuf_[128] = "";
-    std::string statusMsg_ = "Ready";
 };
