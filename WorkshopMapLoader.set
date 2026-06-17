@@ -1,5 +1,3 @@
-[PLUGIN]
-name=Workshop Map Loader
-version=1.0.0
-author=You
-description=Browse and load Steam Workshop maps directly from inside Rocket League.
+// This is your config file
+// Adding a simple checkbox
+test_checkbox "Enable Test Feature" test_enabled_var
