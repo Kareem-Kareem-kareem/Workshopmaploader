@@ -21,7 +21,6 @@ public:
     void onLoad()   override;
     void onUnload() override;
 
-    // PluginWindow
     void        Render()                       override;
     std::string GetMenuName()                  override;
     std::string GetMenuTitle()                 override;
@@ -35,6 +34,7 @@ private:
     void ScanWorkshopMaps();
     void LoadMap(const WorkshopMap& map);
     void LoadMapByPath(const std::string& path);
+    void HostLAN(const std::string& path);
     void ReturnToMainMenu();
 
     std::vector<fs::path> FindWorkshopRoots();
@@ -51,5 +51,6 @@ private:
     char searchBuf_[256]   = {};
     char pathBuf_[512]     = {};
     char customPathBuf_[512] = {};
+    char lanPortBuf_[8]    = {"7777"};
     std::string statusMsg_;
 };
