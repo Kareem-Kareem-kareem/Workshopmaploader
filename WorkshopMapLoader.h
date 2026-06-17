@@ -10,9 +10,4 @@ class WorkshopMapLoader : public BakkesModPlugin {
 public:
     void onLoad() override;
     void onUnload() override;
-
-    void ToggleCameraSettings();
-
-private:
-    bool isWideViewActive_ = false;
 };
