@@ -30,6 +30,9 @@ endif()
 # ── Sources ───────────────────────────────────────────────────────────────────
 add_library(WorkshopMapLoader SHARED
     WorkshopMapLoader.cpp
+    ${IMGUI_DIR}/imgui/imgui.cpp
+    ${IMGUI_DIR}/imgui/imgui_draw.cpp
+    ${IMGUI_DIR}/imgui/imgui_widgets.cpp
 )
 
 target_include_directories(WorkshopMapLoader PRIVATE
