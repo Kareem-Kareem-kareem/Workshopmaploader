@@ -329,10 +329,10 @@ void WorkshopMapLoader::Render()
     // ── Buttons ───────────────────────────────────────────────────────────────
     ImGui::Spacing();
     bool canLoad = (selectedMapIndex_ >= 0 && selectedMapIndex_ < (int)maps_.size());
-    if (!canLoad) ImGui::BeginDisabled();
-    if (ImGui::Button("Load Selected", ImVec2(150, 0)))
+    if (!canLoad) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.4f);
+    if (ImGui::Button("Load Selected", ImVec2(150, 0)) && canLoad)
         LoadMap(maps_[selectedMapIndex_]);
-    if (!canLoad) ImGui::EndDisabled();
+    if (!canLoad) ImGui::PopStyleVar();
 
     ImGui::SameLine();
     if (ImGui::Button("Return to Menu", ImVec2(150, 0)))
