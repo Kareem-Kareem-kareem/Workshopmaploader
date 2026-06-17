@@ -24,4 +24,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test
-          path: build/Release/test.dll
+          path: |
+            build/Release/test.dll
+            test.set
