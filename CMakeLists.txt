@@ -12,29 +12,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(bakkesmodsdk)
 
-set(IMGUI_ZIP_PATH "${bakkesmodsdk_SOURCE_DIR}/imgui_bm.zip")
-set(IMGUI_EXTRACT_DIR "${CMAKE_CURRENT_BINARY_DIR}/imgui_bm")
-
-if(EXISTS "${IMGUI_ZIP_PATH}" AND NOT EXISTS "${IMGUI_EXTRACT_DIR}")
-    file(ARCHIVE_EXTRACT INPUT "${IMGUI_ZIP_PATH}" DESTINATION "${IMGUI_EXTRACT_DIR}")
-endif()
-
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${bakkesmodsdk_SOURCE_DIR}/include
-    ${IMGUI_EXTRACT_DIR}
-)
-
-set(IMGUI_SOURCES
-    "${IMGUI_EXTRACT_DIR}/imgui/imgui.cpp"
-    "${IMGUI_EXTRACT_DIR}/imgui/imgui_draw.cpp"
-    "${IMGUI_EXTRACT_DIR}/imgui/imgui_widgets.cpp"
 )
 
 add_library(${PROJECT_NAME} SHARED
     WorkshopMapLoader.cpp
     WorkshopMapLoader.h
-    ${IMGUI_SOURCES}
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE "${bakkesmodsdk_SOURCE_DIR}/lib/pluginsdk.lib")
