@@ -18,8 +18,6 @@ static void safeCopy(char (&dst)[N], const std::string& src) {
     dst[N - 1] = '\0';
 }
 
-// ── Lifecycle ─────────────────────────────────────────────────────────────────
-
 void WorkshopMapLoader::onLoad()
 {
     enablePlugin_ = std::make_shared<bool>(true);
@@ -59,9 +57,7 @@ void WorkshopMapLoader::onLoad()
         if (args.size() < 2) { BMLOG("Usage: wml_load <index> or wml_load <path>"); return; }
         try {
             int idx = std::stoi(args[1]);
-            if (idx < 0 || idx >= (int)maps_.size()) {
-                BMLOG("Index out of range. Run wml_list."); return;
-            }
+            if (idx < 0 || idx >= (int)maps_.size()) { BMLOG("Index out of range."); return; }
             LoadMap(maps_[idx]);
         } catch (...) { LoadMapByPath(args[1]); }
     }, "Load workshop map by index or path", PERMISSION_ALL);
@@ -70,9 +66,7 @@ void WorkshopMapLoader::onLoad()
         if (args.size() < 2) { BMLOG("Usage: wml_host <index> or wml_host <path>"); return; }
         try {
             int idx = std::stoi(args[1]);
-            if (idx < 0 || idx >= (int)maps_.size()) {
-                BMLOG("Index out of range. Run wml_list."); return;
-            }
+            if (idx < 0 || idx >= (int)maps_.size()) { BMLOG("Index out of range."); return; }
             HostLAN(maps_[idx].filePath.string());
         } catch (...) { HostLAN(args[1]); }
     }, "Host a LAN game on a workshop map", PERMISSION_ALL);
@@ -89,8 +83,6 @@ void WorkshopMapLoader::onLoad()
 
 void WorkshopMapLoader::onUnload() { BMLOG("Workshop Map Loader unloaded."); }
 
-// ── Path detection ────────────────────────────────────────────────────────────
-
 std::vector<fs::path> WorkshopMapLoader::FindWorkshopRoots()
 {
     std::vector<fs::path> candidates;
@@ -98,7 +90,6 @@ std::vector<fs::path> WorkshopMapLoader::FindWorkshopRoots()
     if (!workshopPath_->empty())
         candidates.push_back(*workshopPath_);
 
-    // BakkesMod data/maps — works for both Steam and Epic
     candidates.push_back(gameWrapper->GetDataFolder() / "maps");
 
     for (const char* drive : {"C", "D", "E", "F"}) {
@@ -121,8 +112,6 @@ std::vector<fs::path> WorkshopMapLoader::FindWorkshopRoots()
     }
     return result;
 }
-
-// ── Scanning ──────────────────────────────────────────────────────────────────
 
 void WorkshopMapLoader::ScanWorkshopMaps()
 {
@@ -156,8 +145,6 @@ void WorkshopMapLoader::ScanWorkshopMaps()
     BMLOG(statusMsg_);
 }
 
-// ── Loading ───────────────────────────────────────────────────────────────────
-
 void WorkshopMapLoader::LoadMap(const WorkshopMap& map) { LoadMapByPath(map.filePath.string()); }
 
 void WorkshopMapLoader::LoadMapByPath(const std::string& path)
@@ -169,10 +156,13 @@ void WorkshopMapLoader::LoadMapByPath(const std::string& path)
     statusMsg_ = "Loading: " + fs::path(path).filename().string();
     BMLOG(statusMsg_);
 
-    // Use "open" with ?game= to load into a local freeplay session
-    std::string cmd = "open \"" + path + "\"";
-    gameWrapper->Execute([this, cmd](GameWrapper*) {
-        gameWrapper->ExecuteUnrealCommand(cmd);
+    // PlayFreeplayMap takes just the map stem name and handles workshop maps correctly
+    std::string mapName = fs::path(path).stem().string();
+    gameWrapper->Execute([this, mapName](GameWrapper*) {
+        auto gfx = gameWrapper->GetGfxTrainingData();
+        if (gfx) {
+            gfx.PlayFreeplayMap(mapName);
+        }
     });
 
     statusMsg_ = "Loaded: " + fs::path(path).filename().string();
@@ -184,19 +174,16 @@ void WorkshopMapLoader::HostLAN(const std::string& path)
     std::error_code ec;
     if (!fs::exists(path, ec)) { statusMsg_ = "File not found: " + path; BMLOG(statusMsg_); return; }
 
-    // Get port from buffer
     std::string port(lanPortBuf_);
     if (port.empty()) port = "7777";
 
     statusMsg_ = "Hosting LAN: " + fs::path(path).filename().string();
     BMLOG(statusMsg_);
-    BMLOG("Others can join via: connect <your-local-ip>:" + port);
+    BMLOG("Others join via: connect <your-local-ip>:" + port);
 
-    // Host a LAN server on the workshop map
-    // ?listen makes it a listen server so others can join
-    std::string cmd = "open \"" + path + "\"?listen?port=" + port;
-    gameWrapper->Execute([this, cmd](GameWrapper*) {
-        gameWrapper->ExecuteUnrealCommand(cmd);
+    std::string mapName = fs::path(path).stem().string();
+    gameWrapper->Execute([this, mapName, port](GameWrapper*) {
+        gameWrapper->ExecuteUnrealCommand("open " + mapName + "?listen?port=" + port);
     });
 }
 
@@ -208,8 +195,6 @@ void WorkshopMapLoader::ReturnToMainMenu()
     statusMsg_ = "Returned to main menu.";
     BMLOG(statusMsg_);
 }
-
-// ── ImGui window ──────────────────────────────────────────────────────────────
 
 void WorkshopMapLoader::SetImGuiContext(uintptr_t ctx)
 {
@@ -235,7 +220,6 @@ void WorkshopMapLoader::Render()
     ImGui::Separator();
     ImGui::Spacing();
 
-    // ── Workshop path ─────────────────────────────────────────────────────────
     ImGui::Text("Maps folder (blank = auto-detect):");
     if (pathBuf_[0] == '\0' && !workshopPath_->empty()) safeCopy(pathBuf_, *workshopPath_);
     ImGui::SetNextItemWidth(-80.0f);
@@ -261,12 +245,10 @@ void WorkshopMapLoader::Render()
     ImGui::Separator();
     ImGui::Spacing();
 
-    // ── Search ────────────────────────────────────────────────────────────────
     ImGui::Text("Search:"); ImGui::SameLine();
     ImGui::SetNextItemWidth(-1.0f);
     ImGui::InputText("##search", searchBuf_, sizeof(searchBuf_));
 
-    // ── Map list ──────────────────────────────────────────────────────────────
     float listH = ImGui::GetContentRegionAvail().y - 80.0f;
     ImGui::BeginChild("##maplist", ImVec2(0, listH), true);
 
@@ -298,11 +280,9 @@ void WorkshopMapLoader::Render()
     }
     ImGui::EndChild();
 
-    // ── Buttons ───────────────────────────────────────────────────────────────
     ImGui::Spacing();
     bool canLoad = (selectedMapIndex_ >= 0 && selectedMapIndex_ < (int)maps_.size());
 
-    // Load Solo
     if (!canLoad) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.4f);
     if (ImGui::Button("Load Solo", ImVec2(120, 0)) && canLoad)
         LoadMap(maps_[selectedMapIndex_]);
@@ -310,7 +290,6 @@ void WorkshopMapLoader::Render()
 
     ImGui::SameLine();
 
-    // Host LAN
     if (!canLoad) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.4f);
     if (ImGui::Button("Host LAN", ImVec2(120, 0)) && canLoad)
         HostLAN(maps_[selectedMapIndex_].filePath.string());
