@@ -5,7 +5,6 @@
 
 #include <string>
 #include <vector>
-#include <filesystem>
 
 struct WorkshopMap {
     std::string name;
@@ -14,15 +13,15 @@ struct WorkshopMap {
 
 class WorkshopMapLoader : public BakkesModPlugin, public PluginWindow {
 public:
-    virtual void onLoad() override;
-    virtual void onUnload() override;
+    void onLoad() override;
+    void onUnload() override;
 
-    virtual void Render() override;
-    virtual std::string GetPluginName() override;
-    virtual void SetImGuiContext(uintptr_t ctx) override;
+    void Render() override;
+    std::string GetPluginName() override;
+    void SetImGuiContext(uintptr_t ctx) override;
 
-    virtual void OnOpen() override;
-    virtual void OnClose() override;
+    void OnOpen() override;
+    void OnClose() override;
 
     void ScanForMaps();
     void EnterMap(const std::string& mapPath);
