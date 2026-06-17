@@ -49,7 +49,6 @@ set_target_properties(WorkshopMapLoader PROPERTIES
 
 if(MSVC)
     target_compile_options(WorkshopMapLoader PRIVATE /W3 /MP /EHsc)
-    target_link_options(WorkshopMapLoader PRIVATE /EXPORT:CreatePlugin)
 endif()
 
 # ── Install ───────────────────────────────────────────────────────────────────
