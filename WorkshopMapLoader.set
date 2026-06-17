@@ -1,3 +1,0 @@
-// This is your config file
-// Adding a simple checkbox
-test_checkbox "Enable Test Feature" test_enabled_var
