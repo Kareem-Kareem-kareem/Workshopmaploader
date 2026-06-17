@@ -1,56 +1,37 @@
 #pragma once
+#pragma comment(lib, "pluginsdk.lib")
+
 #include "bakkesmod/plugin/bakkesmodplugin.h"
 #include "bakkesmod/plugin/pluginwindow.h"
-#include "imgui.h"
 #include <string>
 #include <vector>
 #include <filesystem>
 
-namespace fs = std::filesystem;
-
 struct WorkshopMap {
     std::string name;
-    std::string displayName;
-    fs::path    filePath;
+    std::string path;
 };
 
-class WorkshopMapLoader : public BakkesMod::Plugin::BakkesModPlugin,
-                          public BakkesMod::Plugin::PluginWindow
-{
+class WorkshopMapLoader : public BakkesModPlugin, public PluginWindow {
 public:
-    void onLoad()   override;
-    void onUnload() override;
+    virtual void onLoad() override;
+    virtual void onUnload() override;
 
-    void        Render()                       override;
-    std::string GetMenuName()                  override;
-    std::string GetMenuTitle()                 override;
-    void        SetImGuiContext(uintptr_t ctx) override;
-    bool        ShouldBlockInput()             override { return false; }
-    bool        IsActiveOverlay()              override { return true;  }
-    void        OnOpen()                       override { isWindowOpen_ = true;  }
-    void        OnClose()                      override { isWindowOpen_ = false; }
+    // PluginWindow Implementation
+    virtual void Render() override;
+    virtual std::string GetPluginName() override;
+    virtual void SetImGuiContext(uintptr_t ctx) override;
+
+    // Core Logic
+    void ScanForMaps();
+    void EnterMap(const std::string& mapPath);
+    void CreateLanMatch();
 
 private:
-    void ScanWorkshopMaps();
-    void LoadMap(const WorkshopMap& map);
-    void LoadMapByPath(const std::string& path);
-    void HostLAN(const std::string& path);
-    void ReturnToMainMenu();
-
-    std::vector<fs::path> FindWorkshopRoots();
-
-    // CVars
-    std::shared_ptr<bool>        enablePlugin_;
-    std::shared_ptr<std::string> workshopPath_;
-    std::shared_ptr<bool>        autoScan_;
-
-    // State
     std::vector<WorkshopMap> maps_;
-    int  selectedMapIndex_ = -1;
-    bool isWindowOpen_     = false;
-    char searchBuf_[256]   = {};
-    char pathBuf_[512]     = {};
-    char customPathBuf_[512] = {};
-    char lanPortBuf_[8]    = {"7777"};
-    std::string statusMsg_;
+    int selectedMapIdx_ = -1;
+    char searchBuf_[256] = "";
+    char mapDirBuf_[512] = "";
+    char lanPasswordBuf_[128] = "";
+    std::string statusMsg_ = "Ready";
 };
