@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(WorkshopMapLoader)
+project(StatTrackerPlugin)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -27,5 +27,3 @@ target_link_libraries(${PROJECT_NAME} PRIVATE "${bakkesmodsdk_SOURCE_DIR}/lib/pl
 if(MSVC)
     target_compile_definitions(${PROJECT_NAME} PRIVATE WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS _WINDLL)
 endif()
-
-message(STATUS "Done")
