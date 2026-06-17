@@ -2,9 +2,9 @@
 #include <algorithm>
 #include <cctype>
 
-BAKKESMOD_PLUGIN(WorkshopMapLoader, "Workshop Map Loader", "1.1.0", PLUGINTYPE_FREEPLAY)
+BAKKESMOD_PLUGIN(WorkshopMapLoader, "Workshop Map Loader", "1.2.0", PLUGINTYPE_FREEPLAY)
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+#define BMLOG(msg) cvarManager->log(msg)
 
 static std::string toLower(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(),
@@ -18,9 +18,6 @@ static void safeCopy(char (&dst)[N], const std::string& src) {
     dst[N - 1] = '\0';
 }
 
-// Shorthand: log to BakkesMod console
-#define BMLOG(msg) cvarManager->log(msg)
-
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 void WorkshopMapLoader::onLoad()
@@ -30,20 +27,12 @@ void WorkshopMapLoader::onLoad()
     autoScan_     = std::make_shared<bool>(true);
 
     cvarManager->registerCvar("wml_enabled", "1",
-        "Enable Workshop Map Loader", true, true, 0, true, 1)
-        .bindTo(enablePlugin_);
-
+        "Enable Workshop Map Loader", true, true, 0, true, 1).bindTo(enablePlugin_);
     cvarManager->registerCvar("wml_workshop_path", "",
-        "Root folder to scan for .udk maps (blank = auto-detect)", true, false, 0, false, 0, true)
-        .bindTo(workshopPath_);
-
+        "Root folder to scan for .udk maps", true, false, 0, false, 0, true).bindTo(workshopPath_);
     cvarManager->registerCvar("wml_auto_scan", "1",
-        "Scan for maps on plugin load", true, true, 0, true, 1)
-        .bindTo(autoScan_);
+        "Scan for maps on plugin load", true, true, 0, true, 1).bindTo(autoScan_);
 
-    // ── Console commands ──────────────────────────────────────────────────────
-
-    // Open the window from the ~ console
     cvarManager->registerNotifier("wml_open", [this](std::vector<std::string>) {
         gameWrapper->Execute([this](GameWrapper*) {
             cvarManager->executeCommand("togglemenu " + GetMenuName());
@@ -51,45 +40,42 @@ void WorkshopMapLoader::onLoad()
     }, "Open Workshop Map Loader window", PERMISSION_ALL);
 
     cvarManager->registerNotifier("wml_close", [this](std::vector<std::string>) {
-        if (isWindowOpen_) {
-            gameWrapper->Execute([this](GameWrapper*) {
-                cvarManager->executeCommand("togglemenu " + GetMenuName());
-            });
-        }
+        if (isWindowOpen_) gameWrapper->Execute([this](GameWrapper*) {
+            cvarManager->executeCommand("togglemenu " + GetMenuName());
+        });
     }, "Close Workshop Map Loader window", PERMISSION_ALL);
 
     cvarManager->registerNotifier("wml_scan", [this](std::vector<std::string>) {
         ScanWorkshopMaps();
-    }, "Rescan workshop folders for maps", PERMISSION_ALL);
+    }, "Rescan workshop folders", PERMISSION_ALL);
 
     cvarManager->registerNotifier("wml_list", [this](std::vector<std::string>) {
-        if (maps_.empty()) {
-            BMLOG("No maps found. Run wml_scan first.");
-            return;
-        }
+        if (maps_.empty()) { BMLOG("No maps found. Run wml_scan first."); return; }
         for (int i = 0; i < (int)maps_.size(); ++i)
             BMLOG("[" + std::to_string(i) + "] " + maps_[i].displayName);
-    }, "List all found workshop maps", PERMISSION_ALL);
+    }, "List all workshop maps", PERMISSION_ALL);
 
-    // wml_load <index|path>
     cvarManager->registerNotifier("wml_load", [this](std::vector<std::string> args) {
-        if (args.size() < 2) {
-            BMLOG("Usage: wml_load <index>  or  wml_load \"C:/path/to/map.udk\"");
-            BMLOG("Run wml_list to see map indices.");
-            return;
-        }
+        if (args.size() < 2) { BMLOG("Usage: wml_load <index> or wml_load <path>"); return; }
         try {
             int idx = std::stoi(args[1]);
             if (idx < 0 || idx >= (int)maps_.size()) {
-                BMLOG("Index " + std::to_string(idx) + " out of range (0-"
-                    + std::to_string((int)maps_.size()-1) + "). Run wml_list.");
-                return;
+                BMLOG("Index out of range. Run wml_list."); return;
             }
             LoadMap(maps_[idx]);
-        } catch (...) {
-            LoadMapByPath(args[1]);
-        }
+        } catch (...) { LoadMapByPath(args[1]); }
     }, "Load workshop map by index or path", PERMISSION_ALL);
+
+    cvarManager->registerNotifier("wml_host", [this](std::vector<std::string> args) {
+        if (args.size() < 2) { BMLOG("Usage: wml_host <index> or wml_host <path>"); return; }
+        try {
+            int idx = std::stoi(args[1]);
+            if (idx < 0 || idx >= (int)maps_.size()) {
+                BMLOG("Index out of range. Run wml_list."); return;
+            }
+            HostLAN(maps_[idx].filePath.string());
+        } catch (...) { HostLAN(args[1]); }
+    }, "Host a LAN game on a workshop map", PERMISSION_ALL);
 
     cvarManager->registerNotifier("wml_return", [this](std::vector<std::string>) {
         ReturnToMainMenu();
@@ -98,44 +84,30 @@ void WorkshopMapLoader::onLoad()
     if (*autoScan_) ScanWorkshopMaps();
 
     BMLOG("Workshop Map Loader loaded. " + std::to_string(maps_.size()) + " map(s) found.");
-    BMLOG("Open the map browser: wml_open");
+    BMLOG("Open: wml_open | Load: wml_load <n> | Host LAN: wml_host <n>");
 }
 
-void WorkshopMapLoader::onUnload()
-{
-    BMLOG("Workshop Map Loader unloaded.");
-}
+void WorkshopMapLoader::onUnload() { BMLOG("Workshop Map Loader unloaded."); }
 
-// ── Map path detection ────────────────────────────────────────────────────────
+// ── Path detection ────────────────────────────────────────────────────────────
 
 std::vector<fs::path> WorkshopMapLoader::FindWorkshopRoots()
 {
     std::vector<fs::path> candidates;
 
-    // 1. User-configured path (highest priority)
     if (!workshopPath_->empty())
         candidates.push_back(*workshopPath_);
 
-    // 2. BakkesMod data folder — works for BOTH Steam AND Epic
-    //    BakkesMod downloads workshop maps here when you use F2 > Workshop
-    fs::path bmDataMaps = gameWrapper->GetDataFolder() / "maps";
-    candidates.push_back(bmDataMaps);
+    // BakkesMod data/maps — works for both Steam and Epic
+    candidates.push_back(gameWrapper->GetDataFolder() / "maps");
 
-    // 3. Steam workshop paths (C/D/E drives)
     for (const char* drive : {"C", "D", "E", "F"}) {
-        candidates.push_back(
-            std::string(drive) + ":/Program Files (x86)/Steam/steamapps/workshop/content/252950");
-        candidates.push_back(
-            std::string(drive) + ":/SteamLibrary/steamapps/workshop/content/252950");
+        candidates.push_back(std::string(drive) + ":/Program Files (x86)/Steam/steamapps/workshop/content/252950");
+        candidates.push_back(std::string(drive) + ":/SteamLibrary/steamapps/workshop/content/252950");
     }
-
-    // 4. Epic Games RL install (CookedPCConsole holds some maps)
     candidates.push_back("C:/Program Files/Epic Games/rocketleague/TAGame/CookedPCConsole");
-
-    // 5. Public Documents fallback for manual drops
     candidates.push_back("C:/Users/Public/Documents/rocketleague_workshop");
 
-    // Keep only directories that exist, deduplicated
     std::vector<fs::path> result;
     for (auto& p : candidates) {
         std::error_code ec;
@@ -160,23 +132,19 @@ void WorkshopMapLoader::ScanWorkshopMaps()
     auto roots = FindWorkshopRoots();
     if (roots.empty()) {
         statusMsg_ = "No workshop folders found. Set a path manually.";
-        BMLOG(statusMsg_);
-        return;
+        BMLOG(statusMsg_); return;
     }
 
     for (auto& root : roots) {
         try {
             for (auto& entry : fs::recursive_directory_iterator(
-                     root, fs::directory_options::skip_permission_denied))
-            {
+                     root, fs::directory_options::skip_permission_denied)) {
                 auto ext = toLower(entry.path().extension().string());
                 if (ext != ".udk" && ext != ".upk") continue;
-
                 WorkshopMap wm;
                 wm.filePath    = entry.path();
                 wm.name        = entry.path().stem().string();
-                wm.displayName = entry.path().parent_path().filename().string()
-                               + " / " + wm.name;
+                wm.displayName = entry.path().parent_path().filename().string() + " / " + wm.name;
                 maps_.push_back(std::move(wm));
             }
         } catch (const std::exception& e) {
@@ -190,33 +158,46 @@ void WorkshopMapLoader::ScanWorkshopMaps()
 
 // ── Loading ───────────────────────────────────────────────────────────────────
 
-void WorkshopMapLoader::LoadMap(const WorkshopMap& map)
-{
-    LoadMapByPath(map.filePath.string());
-}
+void WorkshopMapLoader::LoadMap(const WorkshopMap& map) { LoadMapByPath(map.filePath.string()); }
 
 void WorkshopMapLoader::LoadMapByPath(const std::string& path)
 {
-    if (!*enablePlugin_) { BMLOG("Workshop Map Loader is disabled."); return; }
-
+    if (!*enablePlugin_) { BMLOG("Plugin is disabled."); return; }
     std::error_code ec;
-    if (!fs::exists(path, ec)) {
-        statusMsg_ = "File not found: " + path;
-        BMLOG(statusMsg_);
-        return;
-    }
+    if (!fs::exists(path, ec)) { statusMsg_ = "File not found: " + path; BMLOG(statusMsg_); return; }
 
     statusMsg_ = "Loading: " + fs::path(path).filename().string();
     BMLOG(statusMsg_);
 
-    // "open <path>" is the correct Unreal console command to load a map.
-    // Works identically on Steam and Epic builds.
+    // Use "open" with ?game= to load into a local freeplay session
     std::string cmd = "open \"" + path + "\"";
     gameWrapper->Execute([this, cmd](GameWrapper*) {
         gameWrapper->ExecuteUnrealCommand(cmd);
     });
 
     statusMsg_ = "Loaded: " + fs::path(path).filename().string();
+}
+
+void WorkshopMapLoader::HostLAN(const std::string& path)
+{
+    if (!*enablePlugin_) { BMLOG("Plugin is disabled."); return; }
+    std::error_code ec;
+    if (!fs::exists(path, ec)) { statusMsg_ = "File not found: " + path; BMLOG(statusMsg_); return; }
+
+    // Get port from buffer
+    std::string port(lanPortBuf_);
+    if (port.empty()) port = "7777";
+
+    statusMsg_ = "Hosting LAN: " + fs::path(path).filename().string();
+    BMLOG(statusMsg_);
+    BMLOG("Others can join via: connect <your-local-ip>:" + port);
+
+    // Host a LAN server on the workshop map
+    // ?listen makes it a listen server so others can join
+    std::string cmd = "open \"" + path + "\"?listen?port=" + port;
+    gameWrapper->Execute([this, cmd](GameWrapper*) {
+        gameWrapper->ExecuteUnrealCommand(cmd);
+    });
 }
 
 void WorkshopMapLoader::ReturnToMainMenu()
@@ -242,31 +223,26 @@ void WorkshopMapLoader::Render()
 {
     if (!isWindowOpen_) return;
 
-    ImGui::SetNextWindowSize(ImVec2(640, 540), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(660, 580), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowPos(ImVec2(100, 80),   ImGuiCond_FirstUseEver);
 
     if (!ImGui::Begin("Workshop Map Loader", &isWindowOpen_, ImGuiWindowFlags_NoCollapse)) {
-        ImGui::End();
-        return;
+        ImGui::End(); return;
     }
 
-    // Console hint bar
     ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.f),
-        "~ console: wml_open  wml_list  wml_load <n>  wml_return");
+        "~ console: wml_open  wml_list  wml_load <n>  wml_host <n>  wml_return");
     ImGui::Separator();
     ImGui::Spacing();
 
     // ── Workshop path ─────────────────────────────────────────────────────────
     ImGui::Text("Maps folder (blank = auto-detect):");
-    if (pathBuf_[0] == '\0' && !workshopPath_->empty())
-        safeCopy(pathBuf_, *workshopPath_);
-
+    if (pathBuf_[0] == '\0' && !workshopPath_->empty()) safeCopy(pathBuf_, *workshopPath_);
     ImGui::SetNextItemWidth(-80.0f);
     bool pathEnter = ImGui::InputText("##wspath", pathBuf_, sizeof(pathBuf_),
                                       ImGuiInputTextFlags_EnterReturnsTrue);
     ImGui::SameLine();
     bool scanBtn = ImGui::Button("Scan", ImVec2(70, 0));
-
     if (pathEnter || scanBtn) {
         *workshopPath_ = pathBuf_;
         cvarManager->getCvar("wml_workshop_path").setValue(*workshopPath_);
@@ -274,8 +250,6 @@ void WorkshopMapLoader::Render()
     }
 
     ImGui::Spacing();
-
-    // ── Direct path ───────────────────────────────────────────────────────────
     ImGui::Text("Load .udk file directly:");
     ImGui::SetNextItemWidth(-130.0f);
     ImGui::InputText("##custom", customPathBuf_, sizeof(customPathBuf_));
@@ -293,20 +267,19 @@ void WorkshopMapLoader::Render()
     ImGui::InputText("##search", searchBuf_, sizeof(searchBuf_));
 
     // ── Map list ──────────────────────────────────────────────────────────────
-    float listH = ImGui::GetContentRegionAvail().y - 56.0f;
+    float listH = ImGui::GetContentRegionAvail().y - 80.0f;
     ImGui::BeginChild("##maplist", ImVec2(0, listH), true);
 
     if (maps_.empty()) {
         ImGui::TextDisabled("No maps found.");
-        ImGui::TextDisabled("Epic Games users: use F2 > Workshop to download maps,");
-        ImGui::TextDisabled("or paste a .udk path above and click Load File.");
+        ImGui::TextDisabled("Epic Games: use F2 > Workshop to download maps.");
+        ImGui::TextDisabled("Or paste a .udk path above and click Load File.");
     }
 
     std::string filter = toLower(std::string(searchBuf_));
     for (int i = 0; i < (int)maps_.size(); ++i) {
         const auto& m = maps_[i];
-        if (!filter.empty() && toLower(m.displayName).find(filter) == std::string::npos)
-            continue;
+        if (!filter.empty() && toLower(m.displayName).find(filter) == std::string::npos) continue;
 
         bool selected = (selectedMapIndex_ == i);
         char label[640];
@@ -314,13 +287,12 @@ void WorkshopMapLoader::Render()
 
         if (ImGui::Selectable(label, selected, ImGuiSelectableFlags_AllowDoubleClick)) {
             selectedMapIndex_ = i;
-            if (ImGui::IsMouseDoubleClicked(0))
-                LoadMap(m);
+            if (ImGui::IsMouseDoubleClicked(0)) LoadMap(m);
         }
         if (ImGui::IsItemHovered()) {
             ImGui::BeginTooltip();
             ImGui::Text("%s", m.filePath.string().c_str());
-            ImGui::Text("Double-click to load instantly");
+            ImGui::Text("Double-click to load in freeplay");
             ImGui::EndTooltip();
         }
     }
@@ -329,14 +301,28 @@ void WorkshopMapLoader::Render()
     // ── Buttons ───────────────────────────────────────────────────────────────
     ImGui::Spacing();
     bool canLoad = (selectedMapIndex_ >= 0 && selectedMapIndex_ < (int)maps_.size());
+
+    // Load Solo
     if (!canLoad) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.4f);
-    if (ImGui::Button("Load Selected", ImVec2(150, 0)) && canLoad)
+    if (ImGui::Button("Load Solo", ImVec2(120, 0)) && canLoad)
         LoadMap(maps_[selectedMapIndex_]);
     if (!canLoad) ImGui::PopStyleVar();
 
     ImGui::SameLine();
-    if (ImGui::Button("Return to Menu", ImVec2(150, 0)))
-        ReturnToMainMenu();
+
+    // Host LAN
+    if (!canLoad) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 0.4f);
+    if (ImGui::Button("Host LAN", ImVec2(120, 0)) && canLoad)
+        HostLAN(maps_[selectedMapIndex_].filePath.string());
+    if (!canLoad) ImGui::PopStyleVar();
+
+    ImGui::SameLine();
+    ImGui::Text("Port:"); ImGui::SameLine();
+    ImGui::SetNextItemWidth(60.0f);
+    ImGui::InputText("##port", lanPortBuf_, sizeof(lanPortBuf_));
+
+    ImGui::SameLine();
+    if (ImGui::Button("Return", ImVec2(80, 0))) ReturnToMainMenu();
 
     ImGui::SameLine();
     ImGui::TextDisabled("  %s", statusMsg_.c_str());
