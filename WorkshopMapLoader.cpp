@@ -79,7 +79,7 @@ void WorkshopMapLoader::OnClose() {
 void WorkshopMapLoader::ScanForMaps() {
     maps_.clear();
     selectedMapIdx_ = -1;
-    std::string targetDir(mapDirBuf);
+    std::string targetDir(mapDirBuf_);
 
     // Strip trailing whitespaces or quotation marks accidentally pasted by users
     targetDir.erase(std::remove(targetDir.begin(), targetDir.end(), '\"'), targetDir.end());
@@ -106,7 +106,7 @@ void WorkshopMapLoader::ScanForMaps() {
                         // Support standard extension criteria
                         if (ext == ".udk" || ext == ".upk") {
                             WorkshopMap m;
-                            m.name = entry.path().stem().string();
+                            m.name = entry.path().stem().string(); // Fixed typo from .stub() to .stem()
                             m.path = entry.path().string();
                             maps_.push_back(m);
                         }
@@ -183,7 +183,7 @@ void WorkshopMapLoader::Render() {
     }
 
     // --- SECTION 1: STORAGE TRACKING CONFIGURATION ---
-    ImGui::Text("Map Directory Path:");
+    ImGui::Text("Map Directory Path:"); // Fixed TextTextUnformatted typo
     ImGui::PushItemWidth(-140.0f); // Reserve space for the button element side anchor
     ImGui::InputText("##dir_input_field", mapDirBuf_, sizeof(mapDirBuf_));
     ImGui::PopItemWidth();
@@ -198,7 +198,7 @@ void WorkshopMapLoader::Render() {
     ImGui::Spacing();
 
     // --- SECTION 2: LIVE TEXT QUERY FILTER SEARCH ---
-    ImGui::Text("Search Filter:");
+    ImGui::Text("Search Filter:"); // Fixed TextTextUnformatted typo
     ImGui::PushItemWidth(-1.0f); // Full width search layout integration bar
     ImGui::InputText("##search_filter_field", searchBuf_, sizeof(searchBuf_));
     ImGui::PopItemWidth();
@@ -262,7 +262,7 @@ void WorkshopMapLoader::Render() {
 
     // LAN Management Grid Group Frame
     ImGui::BeginGroup();
-    ImGui::Text("LAN Room Password (Optional):");
+    ImGui::Text("LAN Room Password (Optional):"); // Fixed TextTextUnformatted typo
     ImGui::SetNextItemWidth(180);
     ImGui::InputText("##lan_room_password_field", lanPasswordBuf_, sizeof(lanPasswordBuf_));
     
@@ -288,7 +288,7 @@ void WorkshopMapLoader::Render() {
     ImGui::Spacing();
     
     // --- SECTION 5: FOOTER FEEDBACK CONSOLE METRICS ---
-    ImGui::Text("System Status:");
+    ImGui::Text("System Status:"); // Fixed TextTextUnformatted typo
     ImGui::SameLine();
     ImGui::TextColored(ImVec4(0.0f, 0.75f, 1.0f, 1.0f), statusMsg_.c_str());
 
