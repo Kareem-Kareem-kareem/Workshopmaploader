@@ -1,12 +1,9 @@
 #include "WorkshopMapLoader.h"
-
-// Ensure the ImGui and core system definitions load explicitly after the header
 #include "imgui/imgui.h"
 #include <fstream>
 #include <algorithm>
 #include <exception>
 
-// The registration macro connects 'cvarManager' and 'gameWrapper' behind the scenes.
 BAKKESMOD_PLUGIN(WorkshopMapLoader, "Workshop Map Loader", "2.0", PLUGINTYPE_FREEPLAY)
 
 #define BMLOG(msg) if (cvarManager) { cvarManager->log(msg); }
@@ -39,7 +36,7 @@ void WorkshopMapLoader::onLoad() {
         if (selectedMapIdx_ >= 0 && selectedMapIdx_ < (int)maps_.size()) {
             EnterMap(maps_[selectedMapIdx_].path);
         } else {
-            statusMsg = "Error: Cannot execute console load. No map selected.";
+            statusMsg_ = "Error: Cannot execute console load. No map selected.";
             BMLOG("WML Error: Console command wml_enter failed due to no active map selection.");
         }
     }, "Load the currently selected map instantly", PERMISSION_ALL);
