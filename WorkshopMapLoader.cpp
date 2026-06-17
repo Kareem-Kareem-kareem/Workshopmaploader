@@ -4,17 +4,14 @@
 #include <algorithm>
 #include <exception>
 
-// Explicitly instantiate core BakkesMod framework reference points back to base system
 BAKKESMOD_PLUGIN(WorkshopMapLoader, "Workshop Map Loader", "2.0", PLUGINTYPE_FREEPLAY)
 
-#define BMLOG(msg) cvarManager->log(msg)
+#define BMLOG(msg) if (cvarManager) { cvarManager->log(msg); }
 
 void WorkshopMapLoader::onLoad() {
-    // 1. Core Config Initialization and Persistence Registry Mapping
     cvarManager->registerCvar("wml_directory", "C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\252950", "Default Workshop Maps Directory", true, false, 0, false, 0, true);
     cvarManager->registerCvar("wml_password", "", "LAN Server Password", true, false, 0, false, 0, true);
 
-    // 2. Safely capture config file modifications from local system drive variables
     std::string savedDir = cvarManager->getCvar("wml_directory").getStringValue();
     if (!savedDir.empty()) {
         strncpy_s(mapDirBuf_, savedDir.c_str(), sizeof(mapDirBuf_) - 1);
@@ -27,10 +24,8 @@ void WorkshopMapLoader::onLoad() {
         lanPasswordBuf_[sizeof(lanPasswordBuf_) - 1] = '\0';
     }
 
-    // 3. Populate array indexes with a quick file iteration sequence tracking sweep
     ScanForMaps();
 
-    // 4. Expose framework actions straight into the local developer control overlay interface
     cvarManager->registerNotifier("wml_scan", [this](std::vector<std::string> args) {
         ScanForMaps();
     }, "Scan the target directory for custom maps instantly", PERMISSION_ALL);
@@ -80,9 +75,8 @@ void WorkshopMapLoader::OnClose() {
 void WorkshopMapLoader::ScanForMaps() {
     maps_.clear();
     selectedMapIdx_ = -1;
-    std::string targetDir(mapDirBuf_); // Fixed name structural token pointer tracking identifier bug
+    std::string targetDir(mapDirBuf_);
 
-    // Normalize incoming paths against manual copy-paste character injections
     targetDir.erase(std::remove(targetDir.begin(), targetDir.end(), '\"'), targetDir.end());
     while(!targetDir.empty() && std::isspace(targetDir.back())) {
         targetDir.pop_back();
@@ -141,8 +135,9 @@ void WorkshopMapLoader::EnterMap(const std::string& mapPath) {
     statusMsg_ = "Loading solo map...";
     BMLOG("WML Execution: Initializing load flow protocol wrapper route tracking for path: " + mapPath);
     
-    // Core functional wrapper routing to force map boot sequence behavior protocols
-    gameWrapper->GetGfxTrainingData().PlayFreeplayMap(mapPath);
+    if (gameWrapper) {
+        gameWrapper->GetGfxTrainingData().PlayFreeplayMap(mapPath);
+    }
 }
 
 void WorkshopMapLoader::CreateLanMatch() {
@@ -164,7 +159,9 @@ void WorkshopMapLoader::CreateLanMatch() {
         cmd += "?password=" + pwd;
     }
 
-    gameWrapper->ExecuteUnrealCommand(cmd);
+    if (gameWrapper) {
+        gameWrapper->ExecuteUnrealCommand(cmd);
+    }
 }
 
 void WorkshopMapLoader::Render() {
@@ -179,7 +176,6 @@ void WorkshopMapLoader::Render() {
         return;
     }
 
-    // --- SECTION 1: WORKSPACE DIRECTORY ALIGNMENTS ---
     ImGui::Text("Map Directory Path:");
     ImGui::PushItemWidth(-140.0f); 
     ImGui::InputText("##dir_input_field", mapDirBuf_, sizeof(mapDirBuf_));
@@ -194,7 +190,6 @@ void WorkshopMapLoader::Render() {
     ImGui::Separator();
     ImGui::Spacing();
 
-    // --- SECTION 2: INTERACTIVE DATA SELECTION MODIFIERS ---
     ImGui::Text("Search Filter:");
     ImGui::PushItemWidth(-1.0f); 
     ImGui::InputText("##search_filter_field", searchBuf_, sizeof(searchBuf_));
@@ -202,8 +197,6 @@ void WorkshopMapLoader::Render() {
 
     ImGui::Spacing();
 
-    // --- SECTION 3: SCROLLABLE SELECTION SUB-VIEWPORT ---
-    // Removed broken flag 'ImGuiWindowFlags_VerticalScrollbar' as standard layouts automatically capture text boundaries
     if (ImGui::BeginChild("MapSelectionListContainer", ImVec2(0, 220), true)) {
         std::string searchStr(searchBuf_);
         std::transform(searchStr.begin(), searchStr.end(), searchStr.begin(), ::tolower);
@@ -236,7 +229,6 @@ void WorkshopMapLoader::Render() {
     ImGui::Separator();
     ImGui::Spacing();
 
-    // --- SECTION 4: MAP LAUNCHER CORE OPERATIONS TRUNK ---
     const bool clearToRun = (selectedMapIdx_ >= 0 && selectedMapIdx_ < (int)maps_.size());
 
     if (!clearToRun) {
@@ -281,7 +273,6 @@ void WorkshopMapLoader::Render() {
     ImGui::Separator();
     ImGui::Spacing();
     
-    // --- SECTION 5: SYSTEM FEEDBACK METRICS FOOTER ---
     ImGui::Text("System Status:");
     ImGui::SameLine();
     ImGui::TextColored(ImVec4(0.0f, 0.75f, 1.0f, 1.0f), statusMsg_.c_str());
